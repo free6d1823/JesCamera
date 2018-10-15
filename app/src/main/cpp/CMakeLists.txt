@@ -35,9 +35,10 @@ endif (${ANDROID_PLATFORM_LEVEL} LESS 12)
 
 add_library(gles3jni SHARED
             ${GL3STUB_SRC}
-            gles3jni.cpp 
-            RendererES2.cpp
-            RendererES3.cpp)
+            gles3jni.cpp
+        CameraManager.cpp
+        CameraSource.cpp
+        RendererES3.cpp)
 
 # Include libraries needed for gles3jni lib
 target_link_libraries(gles3jni

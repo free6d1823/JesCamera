@@ -17,34 +17,39 @@
 #include "gles3jni.h"
 #include <EGL/egl.h>
 
+#include "CameraSource.h"
+CameraSource gCameraSource;
+
 #define STR(s) #s
 #define STRV(s) STR(s)
 
 #define POS_ATTRIB 0
-#define COLOR_ATTRIB 1
+#define TEXTURE_ATTRIB 1
 #define SCALEROT_ATTRIB 2
 #define OFFSET_ATTRIB 3
 
 static const char VERTEX_SHADER[] =
     "#version 300 es\n"
     "layout(location = " STRV(POS_ATTRIB) ") in vec2 pos;\n"
-    "layout(location=" STRV(COLOR_ATTRIB) ") in vec4 color;\n"
     "layout(location=" STRV(SCALEROT_ATTRIB) ") in vec4 scaleRot;\n"
     "layout(location=" STRV(OFFSET_ATTRIB) ") in vec2 offset;\n"
-    "out vec4 vColor;\n"
+    "layout(location=" STRV(TEXTURE_ATTRIB) ") in vec2 vertexUv;\n"
+    "out vec2 v_texcoord;\n"
     "void main() {\n"
     "    mat2 sr = mat2(scaleRot.xy, scaleRot.zw);\n"
     "    gl_Position = vec4(sr*pos + offset, 0.0, 1.0);\n"
-    "    vColor = color;\n"
+    "   v_texcoord = vertexUv;\n"
     "}\n";
 
 static const char FRAGMENT_SHADER[] =
     "#version 300 es\n"
     "precision mediump float;\n"
-    "in vec4 vColor;\n"
+    "precision highp sampler2D;\n"
+    "in vec2 v_texcoord;\n"
     "out vec4 outColor;\n"
+    "uniform sampler2D text2d;\n"
     "void main() {\n"
-    "    outColor = vColor;\n"
+    "    outColor =texture(text2d, v_texcoord);\n"
     "}\n";
 
 class RendererES3: public Renderer {
@@ -52,9 +57,9 @@ public:
     RendererES3();
     virtual ~RendererES3();
     bool init();
-
 private:
-    enum {VB_INSTANCE, VB_SCALEROT, VB_OFFSET, VB_COUNT};
+    void updateTextureData();
+    enum {VB_INSTANCE, VB_TEXT, VB_SCALEROT, VB_OFFSET, VB_COUNT};
 
     virtual float* mapOffsetBuf();
     virtual void unmapOffsetBuf();
@@ -66,6 +71,12 @@ private:
     GLuint mProgram;
     GLuint mVB[VB_COUNT];
     GLuint mVBState;
+    //
+    GLuint mTextureDataId;
+    GLuint mTextureUniform;
+    int mTexWidth;
+    int mTexHeight;
+    unsigned char* mpTexImg;
 };
 
 Renderer* createES3Renderer() {
@@ -80,7 +91,7 @@ Renderer* createES3Renderer() {
 RendererES3::RendererES3()
 :   mEglContext(eglGetCurrentContext()),
     mProgram(0),
-    mVBState(0)
+    mVBState(0), mTextureDataId(0), mTextureUniform(0)
 {
     for (int i = 0; i < VB_COUNT; i++)
         mVB[i] = 0;
@@ -93,20 +104,25 @@ bool RendererES3::init() {
 
     glGenBuffers(VB_COUNT, mVB);
     glBindBuffer(GL_ARRAY_BUFFER, mVB[VB_INSTANCE]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD), &QUAD[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(VERTEXT), &VERTEXT[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, mVB[ VB_TEXT]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(TEXTURE), &TEXTURE[0], GL_STATIC_DRAW);
+
     glBindBuffer(GL_ARRAY_BUFFER, mVB[VB_SCALEROT]);
     glBufferData(GL_ARRAY_BUFFER, MAX_INSTANCES * 4*sizeof(float), NULL, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, mVB[VB_OFFSET]);
     glBufferData(GL_ARRAY_BUFFER, MAX_INSTANCES * 2*sizeof(float), NULL, GL_STATIC_DRAW);
 
+
     glGenVertexArrays(1, &mVBState);
     glBindVertexArray(mVBState);
 
     glBindBuffer(GL_ARRAY_BUFFER, mVB[VB_INSTANCE]);
-    glVertexAttribPointer(POS_ATTRIB, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const GLvoid*)offsetof(Vertex, pos));
-    glVertexAttribPointer(COLOR_ATTRIB, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex), (const GLvoid*)offsetof(Vertex, rgba));
+    glVertexAttribPointer(POS_ATTRIB, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+    glBindBuffer(GL_ARRAY_BUFFER, mVB[VB_TEXT]);
+    glVertexAttribPointer(TEXTURE_ATTRIB, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
     glEnableVertexAttribArray(POS_ATTRIB);
-    glEnableVertexAttribArray(COLOR_ATTRIB);
+    glEnableVertexAttribArray(TEXTURE_ATTRIB);
 
     glBindBuffer(GL_ARRAY_BUFFER, mVB[VB_SCALEROT]);
     glVertexAttribPointer(SCALEROT_ATTRIB, 4, GL_FLOAT, GL_FALSE, 4*sizeof(float), 0);
@@ -118,10 +134,35 @@ bool RendererES3::init() {
     glEnableVertexAttribArray(OFFSET_ATTRIB);
     glVertexAttribDivisor(OFFSET_ATTRIB, 1);
 
+    ///
+    int maxt[1] = {0};
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, maxt); //put the maximum texture size in the array.
+    ALOGV("Max texture = %d", maxt[0]);
+    ///
+    if(!gCameraSource.init())
+        return false;
+    mTexWidth = gCameraSource.Width();
+    mTexHeight = gCameraSource.Height();
+    mpTexImg = NULL; //buffer is provided by CameraSource
+    mTextureUniform = glGetUniformLocation(mProgram, "text2d");
+    glGenTextures(1, &mTextureDataId);
+
+
+    updateTextureData();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     ALOGV("Using OpenGL ES 3.0 renderer");
     return true;
 }
+void RendererES3 ::updateTextureData()
+{
 
+    mpTexImg = gCameraSource.GetFrameData();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, mTextureDataId);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mTexWidth, mTexHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, mpTexImg);
+
+}
 RendererES3::~RendererES3() {
     /* The destructor may be called after the context has already been
      * destroyed, in which case our objects have already been destroyed.
@@ -160,6 +201,11 @@ void RendererES3::unmapTransformBuf() {
 
 void RendererES3::draw(unsigned int numInstances) {
     glUseProgram(mProgram);
+
+    updateTextureData();
+    glUniform1i(mTextureUniform, 0);//"texture" to use first texture data
+    glBindBuffer(GL_ARRAY_BUFFER, mTextureDataId);
+
     glBindVertexArray(mVBState);
     glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, numInstances);
 }

@@ -21,13 +21,21 @@
 
 #include "gles3jni.h"
 
-const Vertex QUAD[4] = {
-    // Square with diagonal < 2 so that it fits in a [-1 .. 1]^2 square
-    // regardless of rotation.
-    {{-0.7f, -0.7f}, {0x00, 0xFF, 0x00}},
-    {{ 0.7f, -0.7f}, {0x00, 0x00, 0xFF}},
-    {{-0.7f,  0.7f}, {0xFF, 0x00, 0x00}},
-    {{ 0.7f,  0.7f}, {0xFF, 0xFF, 0xFF}},
+const Vertex VERTEXT[4] = {
+        // Square with diagonal < 2 so that it fits in a [-1 .. 1]^2 square
+        // regardless of rotation.
+        {-0.7f, -0.7f},
+        { 0.7f, -0.7f},
+        {-0.7f,  0.7f},
+        { 0.7f,  0.7f}
+};
+const Vertex TEXTURE[4] = {
+        // Square with diagonal < 2 so that it fits in a [-1 .. 1]^2 square
+        // regardless of rotation.
+        { 0.0f, 0.0f},
+        { 1.0f, 0.0f},
+        { 0.0f, 1.0f},
+        { 1.0f, 1.0f}
 };
 
 bool checkGlError(const char* funcName) {
@@ -190,6 +198,7 @@ void Renderer::calcSceneParams(unsigned int w, unsigned int h,
     mNumInstances = ncells[0] * ncells[1];
     mScale[major] = 0.5f * CELL_SIZE * scene2clip[0];
     mScale[minor] = 0.5f * CELL_SIZE * scene2clip[1];
+
 }
 
 void Renderer::step() {
@@ -199,7 +208,7 @@ void Renderer::step() {
 
     if (mLastFrameNs > 0) {
         float dt = float(nowNs - mLastFrameNs) * 0.000000001f;
-
+/*
         for (unsigned int i = 0; i < mNumInstances; i++) {
             mAngles[i] += mAngularVelocity[i] * dt;
             if (mAngles[i] >= TWO_PI) {
@@ -208,7 +217,7 @@ void Renderer::step() {
                 mAngles[i] += TWO_PI;
             }
         }
-
+*/
         float* transforms = mapTransformBuf();
         for (unsigned int i = 0; i < mNumInstances; i++) {
             float s = sinf(mAngles[i]);
@@ -265,7 +274,7 @@ Java_com_android_gles3jni_GLES3JNILib_init(JNIEnv* env, jobject obj) {
     if (strstr(versionStr, "OpenGL ES 3.") && gl3stubInit()) {
         g_renderer = createES3Renderer();
     } else if (strstr(versionStr, "OpenGL ES 2.")) {
-        g_renderer = createES2Renderer();
+        //g_renderer = createES2Renderer();
     } else {
         ALOGE("Unsupported OpenGL ES version");
     }

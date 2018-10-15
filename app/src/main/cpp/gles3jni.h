@@ -64,12 +64,12 @@
 // and translated to place them in scene space. Scene space is then
 // non-uniformly scaled to clip space. In practice the transforms are combined
 // so vertices go directly from model to clip space.
-
 struct Vertex {
     GLfloat pos[2];
-    GLubyte rgba[4];
+//    GLubyte rgba[4];
 };
-extern const Vertex QUAD[4];
+extern const Vertex VERTEXT[4];
+extern const Vertex TEXTURE[4];
 
 // returns true if a GL error occurred
 extern bool checkGlError(const char* funcName);
