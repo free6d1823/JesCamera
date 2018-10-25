@@ -156,12 +156,12 @@ bool RendererES3::init() {
 }
 void RendererES3 ::updateTextureData()
 {
-
-    mpTexImg = gCameraSource.GetFrameData();
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, mTextureDataId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mTexWidth, mTexHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, mpTexImg);
 
+    mpTexImg = gCameraSource.GetFrameData();
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mTexWidth, mTexHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, mpTexImg);
+    gCameraSource.ReleaseFrameData();
 }
 RendererES3::~RendererES3() {
     /* The destructor may be called after the context has already been
@@ -207,5 +207,7 @@ void RendererES3::draw(unsigned int numInstances) {
     glBindBuffer(GL_ARRAY_BUFFER, mTextureDataId);
 
     glBindVertexArray(mVBState);
-    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, numInstances);
+//    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, numInstances);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, 1);
 }
+

@@ -7,8 +7,9 @@
 #endif
 #define LOG_TAG "CameraSource"
 
-#include "CameraManager.h"
+
 #include "CameraSource.h"
+#include "CameraManager.h"
 #include <linux/videodev2.h>
 
 #define SAFE_FREE(p) if(p){free(p); p=NULL;}
@@ -25,131 +26,88 @@
 #define YUV2G(Y, U, V) CLIP(( 298 * C(Y) - 100 * D(U) - 208 * E(V) + 128) >> 8)
 #define YUV2B(Y, U, V) CLIP(( 298 * C(Y) + 516 * D(U)              + 128) >> 8)
 
-
-void YuyvToRgb32(unsigned char* pYuv, int width, int stride, int height, unsigned char* pRgb)
+void VyuyToRgb32(unsigned char* pYuv, int width, int stride, int height, unsigned char* pRgb, unsigned int outStride)
 {
     //VYUY - format
-    int nBps = width*4;
     unsigned char* pY1 = pYuv;
-    unsigned char* pV = pYuv+3;
-    unsigned char* pU = pYuv + 1;
-
     unsigned char* pLine1 = pRgb;
 
-    unsigned char y1,u,v;
+    unsigned char y1,u,v,y2;
+    unsigned char* py;
+    unsigned char* pr;
+
     for (int i=0; i<height; i++)
     {
-        for (int j=0; j<width; j++)
+        py = pY1;
+        pr = pLine1;
+        for (int j=0; j<width; j+=2)
         {
-            y1 = pY1[2*j];
-            u = pU[2*j];
-            v = pV[2*j];
-            pLine1[j*4] = YUV2B(y1, u, v);//b
-            pLine1[j*4+1] = YUV2G(y1, u, v);//g
-            pLine1[j*4+2] = YUV2R(y1, u, v);//r
-            pLine1[j*4+3] = 0xff;
-            j++;
-            y1 = pY1[2*j];
-            pLine1[j*4] = YUV2B(y1, u, v);//b
-            pLine1[j*4+1] = YUV2G(y1, u, v);//g
-            pLine1[j*4+2] = YUV2R(y1, u, v);//r
-            pLine1[j*4+3] = 0xff;
+            y1 = *py++;
+            v = *py++;
+            y2 = *py++;
+            u = *py++;
+            *pr++ = YUV2B(y1, u, v);//b
+            *pr++ = YUV2G(y1, u, v);//g
+            *pr++ = YUV2R(y1, u, v);//r
+            *pr++ = 0xff;
+            *pr++ = YUV2B(y2, u, v);//b
+            *pr++ = YUV2G(y2, u, v);//g
+            *pr++ = YUV2R(y2, u, v);//r
+            *pr++ = 0xff;
         }
         pY1 += stride;
-        pV += stride;
-        pU += stride;
-        pLine1 += nBps;
-
-    }
+        pLine1 += outStride;
+     }
 }
-void VyuyToRgb32(unsigned char* pYuv, int width, int stride, int height, unsigned char* pRgb)
-{
-    //VYUY - format
-    int nBps = width*4;
-    unsigned char* pY1 = pYuv+1;
-    unsigned char* pV = pYuv;
-    unsigned char* pU = pYuv + 2;
 
-    unsigned char* pLine1 = pRgb;
-
-    unsigned char y1,u,v;
-    for (int i=0; i<height; i++)
-    {
-        for (int j=0; j<width; j++)
-        {
-            y1 = pY1[2*j];
-            u = 128;//pU[4*j];
-            v = 128;//pV[4*j];
-            pLine1[j*4] = YUV2B(y1, u, v);//b
-            pLine1[j*4+1] = YUV2G(y1, u, v);//g
-            pLine1[j*4+2] = YUV2R(y1, u, v);//r
-            pLine1[j*4+3] = 0xff;
-            j++;
-            y1 = pY1[2*j];//pY1[2*j];
-            pLine1[j*4] = YUV2B(y1, u, v);//b
-            pLine1[j*4+1] = YUV2G(y1, u, v);//g
-            pLine1[j*4+2] = YUV2R(y1, u, v);//r
-            pLine1[j*4+3] = 0xff;
-        }
-        pY1 += stride;
-        pV += stride;
-        pU += stride;
-        pLine1 += nBps;
-
-    }
-}
-void FakeRgb32(unsigned char* pYuv, int width, int stride, int height, unsigned char* pRgb)
-{
-    unsigned char* pLine1 = pRgb;
-    int nBps = width*4;
-    unsigned char* pY1 = pYuv+1;
-static int nn = 0;
-if (nn< 4) {
-    ALOGV("callback %d: buffer = 0x%p", nn, pYuv);
-    nn++;
-}
-    for (int i=0; i<height; i++)
-    {
-        for (int j=0; j<width; j++) {
-            unsigned char v =  *(pY1 + j*2);
-            *(pLine1 + j*4) = j*255/width;//b
-            *(pLine1 + j*4+1) = v;//g
-            *(pLine1 + j*4+2) = i*255/height;//r
-            *(pLine1 + j*4+3)= 0xff;
-        }
-        pLine1 += nBps;
-        pY1 += stride;
-    }
-}
-Camera* m_pCam = NULL;
 int FramePostProcess(void* pInBuffer, CamProperty* pCp, void* pOut, void* data)
 {
-    CameraSource* pThis = (CameraSource*) data;
-    //pCp->format == YUYV, stride is width*2
-    return pThis->DoFramePostProcess(pInBuffer, pCp->width, pCp->height, pCp->width*2, pOut);
+    CameraData* pThis = (CameraData*) data;
+    static int nn = 0;
+    if (nn< 8) {
+        ALOGV("callback %d: id = %d, in=%p, out=%p(%p)", nn, pThis->pCam->GetId(), pInBuffer, pOut, pThis->pBuffer);
+        nn++;
+    }
+    VyuyToRgb32((unsigned char* )pInBuffer, pCp->width, pCp->width*2,  pCp->height,
+                (unsigned char* )pOut, pThis->stride);
+    return 0;
 }
-
-int CameraSource::DoFramePostProcess(void* pInBuffer, int width, int height, int stride, void* pOut)
+void FrameCallback(void* pBuffer, CamProperty* pCp, void* data)
 {
-    //YUV to RGB
- //   if(m_VideoFormat == V4L2_PIX_FMT_YUYV)//YUYV, PC
- //       nfYuyvToRgb32((unsigned char* )pInBuffer, width, stride, height, (unsigned char* )pOut, false);
- //   else //if (V4L2_PIX_FMT_VYUY == m_VideoFormat)
-    FakeRgb32((unsigned char* )pInBuffer, width, stride, height, (unsigned char* )pOut);
 
-//    VyuyToRgb32((unsigned char* )pInBuffer, width, stride, height, (unsigned char* )pOut);
 
-    return width*height*4;
+    CameraData* pThis = (CameraData*) data;
+    static int nn = 0;
+    if (nn< 8) {
+        ALOGV("FrameCallback %d: id= %d", nn, pThis->pCam->GetId());
+        nn++;
+    }
+
+    ((CameraSource*)pThis->pUser)->Lock();
+    VyuyToRgb32((unsigned char* )pBuffer, pCp->width, pCp->width*2,  pCp->height,
+                pThis->pBuffer, pThis->stride);
+    ((CameraSource*)pThis->pUser)->Unlock();
+
 }
-
-CameraSource::CameraSource()
+CameraSource::CameraSource() :  mpOutBuffer(0)
 {
-    mpOutBuffer = NULL;
     mFp = NULL;
     mpTemp = NULL;
     mTotalFrames = 0;
     mUseSim = false;
+    memset(mCam, 0, sizeof(mCam));
+
+    pthread_mutex_init(&mLock, NULL);
 }
+void CameraSource::Lock()
+{
+    pthread_mutex_lock(&mLock);
+}
+void CameraSource::Unlock()
+{
+    pthread_mutex_unlock(&mLock);
+}
+
 /* call this before init() if use SimFile */
 void CameraSource::setSimFileRgb32(int width, int height, int depth, const char* szFile)
 {
@@ -163,11 +121,11 @@ void CameraSource::setSimFileRgb32(int width, int height, int depth, const char*
         ALOGE("Failed to open video simulation file %s!!", szFile);
         return;
     }
-    m_nWidth = width;
-    m_nHeight = height;
-    m_VideoFormat = 'ABGR';
-    mBytesPerFrameInput = m_nWidth*depth* m_nHeight;
-    mBytesPerFrameOutput = m_nWidth*4* m_nHeight;
+    mWidth = width;
+    mHeight = height;
+    mVideoFormat = 'ABGR';
+    mBytesPerFrameInput = mWidth*depth* mHeight;
+    mBytesPerFrameOutput = mWidth*4* mHeight;
     if(mpOutBuffer) free(mpOutBuffer);
     mpOutBuffer = (unsigned char*) malloc(mBytesPerFrameOutput);
     fseek(mFp, 0, SEEK_END);
@@ -188,11 +146,11 @@ void CameraSource::setSimFileYuv(int width, int height, int depth, const char* s
         ALOGE("Failed to open video simulation file %s!!", szFile);
         return;
     }
-    m_nWidth = width;
-    m_nHeight = height;
-    m_VideoFormat = 'YUYV';
-    mBytesPerFrameInput = m_nWidth*depth* m_nHeight;
-    mBytesPerFrameOutput = m_nWidth*4* m_nHeight;
+    mWidth = width;
+    mHeight = height;
+    mVideoFormat = 'YUYV';
+    mBytesPerFrameInput = mWidth*depth* mHeight;
+    mBytesPerFrameOutput = mWidth*4* mHeight;
     if(mpOutBuffer) free(mpOutBuffer);
     mpOutBuffer = (unsigned char*) malloc(mBytesPerFrameOutput);
     mpTemp = (unsigned char*) malloc(mBytesPerFrameInput); //use conversion
@@ -217,89 +175,94 @@ bool CameraSource::init()
         return false;
     }
     ALOGV("Found %d cameras\n", nMaxCam);
-    unsigned int nMaxWidth = 0;
-    int candidate = -1;
+    mWidth = IMAGE_WIDTH;
+    mHeight = IMAGE_HEIGHT;
 
-    //use first camera
-    Camera* pCam = GetCameraManager()->GetCameraBySeq(0);
-    if(! pCam)
-        return false;
-    int n=0;
-    CamProperty* pCp = pCam->GetSupportedProperty(n);
-    for(int i=0; i < n; i++) {
-        if (pCp[i].width > nMaxWidth) {
-            if (pCp[i].width > 1280)//1920x1080,1280x720, 2592x1944, 1024x768
-                break;
-            nMaxWidth = pCp[i].width;
-            candidate = i;
-        }
-        ALOGV("Camera 0 width=%dx %d, format=0x%0X fps = %f", pCp[i].width, pCp[i].height, pCp[i].format, pCp[i].fps);
-    }
-
-    if (candidate < 0) {
-        ALOGE("No camera found");
-        return false;
-    }
-    m_nWidth = pCp[candidate].width;
-    m_nHeight = pCp[candidate].height;
-    m_VideoFormat = pCp[candidate].format;
-    mBytesPerFrameOutput = m_nWidth*4* m_nHeight;
+    mBytesPerFrameOutput = mWidth*4* mHeight;
     SAFE_FREE(mpOutBuffer);
     mpOutBuffer = (unsigned char*) malloc(mBytesPerFrameOutput);
+    mVideoFormat = V4L2_PIX_FMT_YUYV;
+    for (int i=0; i<MAX_CAM; i++) {
+        mCam[i].pCam = NULL;
+        if(i==0 || i==2)
+            continue;
+        Camera *pCam = GetCameraManager()->GetCameraBySeq(i);
+        if (!pCam)
+            return false;
+        CamProperty cp;
+        cp.width = IMAGE_WIDTH/2;
+        cp.height = IMAGE_HEIGHT/2;
+        cp.format = V4L2_PIX_FMT_YUYV;
+        cp.field = IMAGE_FIELD_TYPE;
+        cp.fps = 30.0;
+        bool ret = pCam->Open(&cp);
+        if (!ret) {
+            ALOGE("Open camera /dev/video%d failed!\n", pCam->GetId());
+            continue;
+        }
 
-    bool ret = pCam->Open(& pCp[candidate]);
-    if (!ret){
-        ALOGE("Open camera /dev/video%d failed!\n", pCam->GetId());
-        return false;
+        mCam[i].pCam = pCam;
+        mCam[i].width = mWidth / 2;
+        mCam[i].height = mHeight / 2;
+        mCam[i].stride = mWidth * 4;
+        mCam[i].pUser = this;
+        switch (i) {
+            case 1: //left
+                mCam[i].pBuffer = mpOutBuffer + (mWidth / 2) * 4;
+                break;
+            case 2: //rear
+                mCam[i].pBuffer = mpOutBuffer + mWidth * 4 * mHeight / 2 + mWidth *4 / 2;
+                break;
+            case 3: //left
+                mCam[i].pBuffer = mpOutBuffer + mWidth * 4 * mHeight / 2;
+                break;
+            default: //0 front
+                mCam[i].pBuffer = mpOutBuffer;
+                break;
+        }
+        //if(!pCam->Start(FrameCallback, (mCam + i))){
+        if(!pCam->Start(FramePostProcess, (mCam + i))){
+            mCam[i].pCam = NULL;
+
+        }
+
     }
-    ALOGV("Use camera %dx%d %0X fps=%f",m_nWidth, m_nHeight,  m_VideoFormat, pCp[candidate].fps);
-    m_pCam = pCam;
-    m_pCam->Start(FramePostProcess, this);
     return true;
 }
 
 CameraSource::~CameraSource()
 {
-    if (m_pCam ) {
-        m_pCam->Stop();
-        m_pCam->Close();
-        m_pCam = NULL; //no need to delete it, CameraManager do it.
+    for (int i=0; i<MAX_CAM; i++) {
+
+        if (mCam[i].pCam ) {
+            mCam[i].pCam ->Stop();
+            mCam[i].pCam ->Close();
+            mCam[i].pCam = NULL; //no need to delete it, CameraManager do it.
+        }
     }
-
     SAFE_FREE(mpOutBuffer);
-
-    //if use sim file
+        //if use sim file
     if(mFp) {
         fclose(mFp);
         mFp = NULL;
         SAFE_FREE(mpTemp);
     }
 
+    pthread_mutex_destroy(&mLock);
 }
 unsigned char * CameraSource::GetFrameData()
 {
-    if (mUseSim && mFp ) {
-        if (mCurFrame >= mTotalFrames) {
-            fseek(mFp, 0, SEEK_SET);
-            mCurFrame = 0;
-        }
-
-        if(mpTemp) {//input is YUYV
-            fread(mpTemp, 1, mBytesPerFrameInput, mFp);
-            YuyvToRgb32(mpTemp, m_nWidth, m_nWidth*2, m_nHeight, (unsigned char* )mpOutBuffer);
-        }
-        else //input is RGB32
-            fread(mpOutBuffer, 1,mBytesPerFrameOutput, mFp);
-
-
-    }else if(mpOutBuffer){
-
-        int length = m_pCam->GetFrame(mpOutBuffer, mBytesPerFrameOutput);
-        if (length != mBytesPerFrameOutput) {
-            perror("Data cropt!!\n");
-            return NULL;
+//if not use Frame callback
+    for(int i=0; i< MAX_CAM; i++) {
+        if (mCam[i].pCam) {
+            mCam[i].pCam->GetFrame( mCam[i].pBuffer, mWidth*mHeight);
         }
     }
-    mCurFrame++;
+
+    pthread_mutex_lock(&mLock);
     return mpOutBuffer;
+}
+void CameraSource::ReleaseFrameData()
+{
+    pthread_mutex_unlock(&mLock);
 }

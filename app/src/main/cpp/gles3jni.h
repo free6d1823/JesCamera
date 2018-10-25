@@ -93,7 +93,7 @@ protected:
     virtual float* mapOffsetBuf() = 0;
     virtual void unmapOffsetBuf() = 0;
     // return a pointer to a buffer of MAX_INSTANCES * sizeof(vec4).
-    // the buffer is filled with per-instance scale and rotation transforms.
+    // the buffer is filled mNumInstanceswith per-instance scale and rotation transforms.
     virtual float* mapTransformBuf() = 0;
     virtual void unmapTransformBuf() = 0;
 

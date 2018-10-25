@@ -1,7 +1,29 @@
 #ifndef VIDEOSOURCE_H
 #define VIDEOSOURCE_H
 #include "stdio.h"
+#include<pthread.h>
 
+#include "CameraManager.h"
+#define MAX_CAM 4
+/* For SOUND SK82 project, use 640*2*480*2 as total image size */
+#define IMAGE_WIDTH 1280
+#define IMAGE_HEIGHT    960
+#define IMAGE_FIELD_TYPE     V4L2_FIELD_INTERLACED
+
+/*
+#define IMAGE_WIDTH 1440
+#define IMAGE_HEIGHT    480
+#define IMAGE_FIELD_TYPE     V4L2_FIELD_ANY
+*/
+
+typedef struct _CameraData{
+    Camera* pCam;
+    unsigned char* pBuffer;
+    unsigned int width;
+    unsigned int height;
+    unsigned int stride;
+    void* pUser;
+}CameraData;
 class CameraSource
 {
 public:
@@ -10,14 +32,16 @@ public:
     void setSimFileRgb32(int width, int height, int depth, const char* szFile);
     void setSimFileYuv(int width, int height, int depth, const char* szFile);
     bool init();
-    int Width(){return m_nWidth;}
-    int Height() {return m_nHeight;}
+    int Width(){return mWidth;}
+    int Height() {return mHeight;}
     unsigned char * GetFrameData();
-    int DoFramePostProcess(void* pInBuffer, int width, int height, int stride, void* pOut);
-protected:
-    int m_nWidth;
-    int m_nHeight;
-    unsigned int m_VideoFormat; //camera input format
+    void ReleaseFrameData();
+    void Lock();
+    void Unlock();
+ protected:
+    int mWidth;
+    int mHeight;
+    unsigned int mVideoFormat; //camera input format
 
     //ping-pong buffers
     unsigned char* mpOutBuffer;//RGB888 output
@@ -34,6 +58,8 @@ protected:
     FILE* mFp; /*<! video file FILE pointer */
     unsigned char* mpTemp;   /*<! source buffer if colorconversion is needed*/
 
+    CameraData mCam[MAX_CAM];
+    pthread_mutex_t mLock;
 };
 
 #endif // VIDEOSOURCE_H

@@ -24,18 +24,18 @@
 const Vertex VERTEXT[4] = {
         // Square with diagonal < 2 so that it fits in a [-1 .. 1]^2 square
         // regardless of rotation.
-        {-0.7f, -0.7f},
-        { 0.7f, -0.7f},
-        {-0.7f,  0.7f},
-        { 0.7f,  0.7f}
+        {-1.0f, -1.0f},
+        { 1.0f, -1.0f},
+        {-1.0f,  1.0f},
+        { 1.0f,  1.0f}
 };
 const Vertex TEXTURE[4] = {
         // Square with diagonal < 2 so that it fits in a [-1 .. 1]^2 square
         // regardless of rotation.
-        { 0.0f, 0.0f},
-        { 1.0f, 0.0f},
         { 0.0f, 1.0f},
-        { 1.0f, 1.0f}
+        { 1.0f, 1.0f},
+        { 0.0f, 0.0f},
+        { 1.0f, 0.0f}
 };
 
 bool checkGlError(const char* funcName) {
@@ -147,13 +147,14 @@ void Renderer::resize(int w, int h) {
     auto offsets = mapOffsetBuf();
     calcSceneParams(w, h, offsets);
     unmapOffsetBuf();
-
-    // Auto gives a signed int :-(
-    for (auto i = (unsigned)0; i < mNumInstances; i++) {
-        mAngles[i] = drand48() * TWO_PI;
-        mAngularVelocity[i] = MAX_ROT_SPEED * (2.0*drand48() - 1.0);
+    float* transforms = mapTransformBuf();
+    for (unsigned int i = 0; i < mNumInstances; i++) {
+        transforms[0] =  mScale[0];
+        transforms[1] =  0;
+        transforms[2] =  0;
+        transforms[3] =  mScale[1];
     }
-
+    unmapTransformBuf();
     mLastFrameNs = 0;
 
     glViewport(0, 0, w, h);
@@ -161,43 +162,22 @@ void Renderer::resize(int w, int h) {
 
 void Renderer::calcSceneParams(unsigned int w, unsigned int h,
         float* offsets) {
-    // number of cells along the larger screen dimension
-    const float NCELLS_MAJOR = MAX_INSTANCES_PER_SIDE;
-    // cell size in scene space
-    const float CELL_SIZE = 2.0f / NCELLS_MAJOR;
 
-    // Calculations are done in "landscape", i.e. assuming dim[0] >= dim[1].
-    // Only at the end are values put in the opposite order if h > w.
-    const float dim[2] = {fmaxf(w,h), fminf(w,h)};
-    const float aspect[2] = {dim[0] / dim[1], dim[1] / dim[0]};
-    const float scene2clip[2] = {1.0f, aspect[0]};
-    const int ncells[2] = {
-            static_cast<int>(NCELLS_MAJOR),
-            (int)floorf(NCELLS_MAJOR * aspect[1])
-    };
-
-    float centers[2][MAX_INSTANCES_PER_SIDE];
-    for (int d = 0; d < 2; d++) {
-        auto offset = -ncells[d] / NCELLS_MAJOR; // -1.0 for d=0
-        for (auto i = 0; i < ncells[d]; i++) {
-            centers[d][i] = scene2clip[d] * (CELL_SIZE*(i + 0.5f) + offset);
-        }
+    float dimm = fmaxf(w,h) - fminf(w,h);
+    float dxf,dyf;
+    if (w > h) {
+        dxf = dimm/(2.0*w);
+        dyf = 0.01f;
+    }else {
+        dxf = 0.01f;
+        dyf = dimm/(2.0*h);
     }
-
-    int major = w >= h ? 0 : 1;
-    int minor = w >= h ? 1 : 0;
-    // outer product of centers[0] and centers[1]
-    for (int i = 0; i < ncells[0]; i++) {
-        for (int j = 0; j < ncells[1]; j++) {
-            int idx = i*ncells[1] + j;
-            offsets[2*idx + major] = centers[0][i];
-            offsets[2*idx + minor] = centers[1][j];
-        }
-    }
-
-    mNumInstances = ncells[0] * ncells[1];
-    mScale[major] = 0.5f * CELL_SIZE * scene2clip[0];
-    mScale[minor] = 0.5f * CELL_SIZE * scene2clip[1];
+    offsets[0] = 0.0;
+    offsets[1] = 0.0;
+    mNumInstances = 1;
+    mScale[0] = 0.98;
+    mScale[1] = 0.98;
+    mAngles[0] = 0;
 
 }
 
@@ -205,10 +185,10 @@ void Renderer::step() {
     timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     auto nowNs = now.tv_sec*1000000000ull + now.tv_nsec;
-
+#if 0
     if (mLastFrameNs > 0) {
         float dt = float(nowNs - mLastFrameNs) * 0.000000001f;
-/*
+#if 0
         for (unsigned int i = 0; i < mNumInstances; i++) {
             mAngles[i] += mAngularVelocity[i] * dt;
             if (mAngles[i] >= TWO_PI) {
@@ -217,7 +197,7 @@ void Renderer::step() {
                 mAngles[i] += TWO_PI;
             }
         }
-*/
+#endif
         float* transforms = mapTransformBuf();
         for (unsigned int i = 0; i < mNumInstances; i++) {
             float s = sinf(mAngles[i]);
@@ -229,7 +209,7 @@ void Renderer::step() {
         }
         unmapTransformBuf();
     }
-
+#endif
     mLastFrameNs = nowNs;
 }
 

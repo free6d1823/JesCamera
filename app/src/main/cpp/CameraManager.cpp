@@ -96,6 +96,7 @@ int EnumFpsByFrameSize(int fd, v4l2_frmivalenum& fit, CamProperty* pCp, int& n)
             n++;
         }
     }
+    ALOGV("Cam fd=%d - frame size %dx%d, format=%X", fd, fit.width, fit.height, fit.pixel_format);
     return n;
 }
 
@@ -115,6 +116,7 @@ int EnumFrameSizeByPixelFormat(int fd, v4l2_frmsizeenum& fse, CamProperty* pCp, 
             fit.width = fse.discrete.width;
             fit.height = fse.discrete.height;
             fit.index = 0;
+
             EnumFpsByFrameSize(fd, fit, pCp, n);
             fse.index ++;
             ret = xioctl(fd, VIDIOC_ENUM_FRAMESIZES,&fse);
@@ -147,6 +149,13 @@ int CameraManager::Reflesh()
              || !(cap.capabilities & V4L2_CAP_STREAMING)) {
             close(fd);
             continue;
+        }
+
+        if(cap.capabilities & V4L2_CAP_READWRITE){
+            ALOGV("Cam%d Support V4L2_CAP_READWRITE", i);
+        }
+        if(cap.capabilities & V4L2_CAP_STREAMING){
+            ALOGV("Cam%d Support V4L2_CAP_STREAMING", i);
         }
         CamProperty cp[100];
         int n = 0; //number of property set
@@ -186,6 +195,7 @@ int CameraManager::Reflesh()
         }
         m_listCam.push_back(pCam);
         close(fd);
+        ALOGV("Add cam %d", pCam->m_id);
         //try next dev nodes
     }
 
@@ -239,7 +249,7 @@ bool Camera::GetCurrentProperty(CamProperty* pCp)
     pCp->width = fmt.fmt.pix.width;
     pCp->height = fmt.fmt.pix.height;
     pCp->format = fmt.fmt.pix.pixelformat;
-
+    pCp->field = (int)fmt.fmt.pix.field;
     /*VIDIOC_G_PARM no support, no message shown
     v4l2_streamparm smp;
     CLEAR(smp);
@@ -283,13 +293,13 @@ bool Camera::Open(CamProperty* pCp)
     }
     char device[32];
     sprintf(device, "/dev/video%d", m_id);
-    int fd = open(device, O_RDWR | O_NONBLOCK, 0);
+    int fd = open(device, O_RDWR | O_NONBLOCK,0);
+//    int fd = open(device, O_RDWR);
     if (fd < 0) {
         ALOGE("Open device %s failed!!\n", device);
         return false;
     }
     //
-
     m_fd = fd;
     v4l2_format fmt;
     CLEAR(fmt);
@@ -302,7 +312,7 @@ bool Camera::Open(CamProperty* pCp)
     fmt.fmt.pix.width       = pCp->width; //replace
     fmt.fmt.pix.height      = pCp->height; //replace
     fmt.fmt.pix.pixelformat = pCp->format; //replace
-    fmt.fmt.pix.field = V4L2_FIELD_ANY;
+    fmt.fmt.pix.field = pCp->field;
     ALOGV("intent setting is %dx%d format %08X \n", fmt.fmt.pix.width, fmt.fmt.pix.height,
            fmt.fmt.pix.pixelformat);
 
@@ -354,7 +364,6 @@ bool Camera::Open(CamProperty* pCp)
                         fd, buf.m.offset);
         if (MAP_FAILED == m_pBuf[i].start)
             ReturnError("mmap error \n");
-        ALOGV("V4L2: buffer %d maps 0x%p, size %d bytes", i, m_pBuf[i].start, m_pBuf[i].length);
     }
 
     for (size_t i = 0; i < m_nMaxBuffer; ++i) {
@@ -364,7 +373,6 @@ bool Camera::Open(CamProperty* pCp)
             buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
             buf.memory = V4L2_MEMORY_MMAP;
             buf.index = i;
-
             if (-1 == xioctl(fd, VIDIOC_QBUF, &buf))
                     ReturnError("VIDIOC_QBUF error\n");
     }
@@ -381,6 +389,7 @@ void *DoThread(void *argument)
 }
 void Camera::DoFrameProcess()
 {
+    ALOGV("Start thread camid = %d", GetId());
     while(m_nStopThread == 0)
     {
         struct v4l2_buffer buf;
@@ -389,6 +398,7 @@ void Camera::DoFrameProcess()
             ALOGE("Device not open yet\n");
             break;
         }
+
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
         if (-1 == xioctl(m_fd, VIDIOC_DQBUF, &buf)) {
@@ -397,7 +407,7 @@ void Camera::DoFrameProcess()
                     usleep(500);
                     continue;
                 default:
-                    ALOGE("VIDIOC_DQBUF error!\n");
+                    ALOGE("VIDIOC_DQBUF error! %d", errno);
                 break;
             }
         }
@@ -424,6 +434,7 @@ bool Camera::Start(OnFrameCallback func, void* data)
     m_pOnFrameData = data;
    //use callback method
     m_nStopThread = 0;
+
     pthread_create(&m_threadFrame, NULL, DoThread, (void *) this);
     return true;
 }
@@ -431,12 +442,14 @@ bool Camera::Start(OnFramePostProcess func, void* data)
 {
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (-1 == xioctl(m_fd, VIDIOC_STREAMON, &type)){
-        ReturnError("VIDIOC_STREAMON error\n");
+        ALOGE("%d VIDIOC_STREAMON error(%d):%s", GetId(), errno, strerror(errno));
+ //       close(m_fd);
+ //       m_fd = -1;
+ //      return false;
     }
     m_pfnOnFrame = NULL;
     m_pfnFramePostProcess = func;
     m_pOnFrameData = data;
-
     return true;
 }
 bool Camera::Stop()
@@ -454,6 +467,7 @@ bool Camera::Stop()
 }
 bool Camera::Close()
 {
+    ALOGV("Cam %d closed", m_id);
     if (m_fd >= 0){
         if (m_pBuf) {
             for (size_t i=0; i< m_nMaxBuffer;i ++){
@@ -479,20 +493,22 @@ int Camera::GetFrame(void* buffer, int length)
         ALOGE( "GetFrame cannot be called in callback mode!!\n");
         return -1;
     }
+
     struct v4l2_buffer buf;
     CLEAR(buf);
     if(!m_pBuf) {
         ALOGE("Device not open yet\n");
         return -1;
     }
+    int r;
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
-    while (-1 == xioctl(m_fd, VIDIOC_DQBUF, &buf)) {
+    while (-1 == (r = xioctl(m_fd, VIDIOC_DQBUF, &buf))) {
         if (errno == EAGAIN) {
             usleep(500);
             continue;
         }
-        ALOGE( "VIDIOC_DQBUF error!\n");
+        ALOGE( "%d fd=%d VIDIOC_DQBUF error! %d-%s", this->m_id, m_fd, r, strerror(errno));
         return -1;
     }
 
