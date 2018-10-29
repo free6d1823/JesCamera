@@ -184,8 +184,11 @@ bool CameraSource::init()
     mVideoFormat = V4L2_PIX_FMT_YUYV;
     for (int i=0; i<MAX_CAM; i++) {
         mCam[i].pCam = NULL;
-        if(i==0 || i==2)
-            continue;
+
+        //only 0/2 or 1/3 can run
+        if (i==3  || i==1)
+           continue;
+
         Camera *pCam = GetCameraManager()->GetCameraBySeq(i);
         if (!pCam)
             return false;
@@ -250,16 +253,42 @@ CameraSource::~CameraSource()
 
     pthread_mutex_destroy(&mLock);
 }
+int xioctl(int fd, int request, void* arg);
+#define STREAM_OFF(i) if (-1 ==  xioctl( mCam[i].pCam->m_fd, VIDIOC_STREAMOFF, &type)) {ALOGE("STREAMOFF %d error.", i);}
+#define STREAM_ON(i) if (-1 ==  xioctl( mCam[i].pCam->m_fd, VIDIOC_STREAMON, &type)) {ALOGE("STREAMON %d error.", i);}
 unsigned char * CameraSource::GetFrameData()
 {
 //if not use Frame callback
+#if 0
+static int nnn = 0;
+ALOGV("Get frame %d", nnn++);
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    //turn off 1,3; turn on 0,2
+    STREAM_OFF(1);
+    STREAM_OFF(3);
+    STREAM_ON(0);
+    STREAM_ON(2)
+    mCam[0].pCam->GetFrame( mCam[0].pBuffer, mWidth*mHeight);
+    mCam[2].pCam->GetFrame( mCam[2].pBuffer, mWidth*mHeight);
+
+    //turn off 0,2; turn on 1,3
+    STREAM_OFF(0);
+    STREAM_OFF(2);
+    STREAM_ON(1);
+    STREAM_ON(3)
+    mCam[1].pCam->GetFrame( mCam[1].pBuffer, mWidth*mHeight);
+    mCam[3].pCam->GetFrame( mCam[3].pBuffer, mWidth*mHeight);
+#endif
+
+#if 1
     for(int i=0; i< MAX_CAM; i++) {
         if (mCam[i].pCam) {
             mCam[i].pCam->GetFrame( mCam[i].pBuffer, mWidth*mHeight);
         }
     }
-
     pthread_mutex_lock(&mLock);
+#endif
+
     return mpOutBuffer;
 }
 void CameraSource::ReleaseFrameData()
