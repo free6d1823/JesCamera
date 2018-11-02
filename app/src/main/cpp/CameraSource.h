@@ -40,7 +40,7 @@ public:
     int Width(){return mWidth;}
     int Height() {return mHeight;}
     unsigned char * GetFrameData();
-    void ReleaseFrameData();
+
     void Lock();
     void Unlock();
  protected:

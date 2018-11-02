@@ -288,10 +288,7 @@ unsigned char * CameraSource::GetFrameData()
             mCam[i].pCam->GetFrame( mCam[i].pBuffer, mWidth*mHeight);
         }
     }
-
+    pthread_mutex_unlock(&mLock);
     return mpOutBuffer;
 }
-void CameraSource::ReleaseFrameData()
-{
-    pthread_mutex_unlock(&mLock);
-}
+

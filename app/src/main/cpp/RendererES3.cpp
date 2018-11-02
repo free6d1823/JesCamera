@@ -165,7 +165,7 @@ void RendererES3 ::updateTextureData()
 
     mpTexImg = gCameraSource.GetFrameData();
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mTexWidth, mTexHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, mpTexImg);
-    gCameraSource.ReleaseFrameData();
+
 }
 RendererES3::~RendererES3() {
     /* The destructor may be called after the context has already been
