@@ -32,6 +32,11 @@ public:
     void setSimFileRgb32(int width, int height, int depth, const char* szFile);
     void setSimFileYuv(int width, int height, int depth, const char* szFile);
     bool init();
+    //open and start specified cameras
+    bool open(unsigned int camsBitMask);
+    //close all cameras
+    void close();
+
     int Width(){return mWidth;}
     int Height() {return mHeight;}
     unsigned char * GetFrameData();
@@ -60,6 +65,12 @@ public:
 
     CameraData mCam[MAX_CAM];
     pthread_mutex_t mLock;
+    enum CAM_STATE {
+        CS_NONE = 0,    //cameras first state
+        CS_INITED = 1,  //resource inited
+        CS_OPENED = 2  //camera opened and started
+    };
+    CAM_STATE   mState;
 };
 
 #endif // VIDEOSOURCE_H

@@ -84,7 +84,7 @@ public:
     virtual ~Renderer();
     void resize(int w, int h);
     void render();
-
+    virtual void setOption(int nOption);
 protected:
     Renderer();
 

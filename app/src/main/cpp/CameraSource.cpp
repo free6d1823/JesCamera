@@ -96,6 +96,7 @@ CameraSource::CameraSource() :  mpOutBuffer(0)
     mTotalFrames = 0;
     mUseSim = false;
     memset(mCam, 0, sizeof(mCam));
+    mState = CS_NONE;
 
     pthread_mutex_init(&mLock, NULL);
 }
@@ -165,6 +166,8 @@ void CameraSource::setSimFileYuv(int width, int height, int depth, const char* s
 
 bool CameraSource::init()
 {
+    if (mState > CS_NONE)
+        return true;
     if(mFp && mUseSim){
         return true;
     }
@@ -182,16 +185,31 @@ bool CameraSource::init()
     SAFE_FREE(mpOutBuffer);
     mpOutBuffer = (unsigned char*) malloc(mBytesPerFrameOutput);
     mVideoFormat = V4L2_PIX_FMT_YUYV;
+
+    mState = CS_INITED;
+    return true;
+}
+//open and start specified cameras, cam0 = bit0 set
+bool CameraSource::open(unsigned int camsBitMask)
+{
+    if (mState == CS_OPENED)
+        close();
+    if (mState < CS_INITED) {
+        if (!init())
+            return false;
+    }
+    pthread_mutex_lock(&mLock);
     for (int i=0; i<MAX_CAM; i++) {
         mCam[i].pCam = NULL;
 
-        //only 0/2 or 1/3 can run
-        if (i==3  || i==1)
-           continue;
+        if ((camsBitMask & (1<<i)) ==0 )
+            continue;
 
         Camera *pCam = GetCameraManager()->GetCameraBySeq(i);
-        if (!pCam)
+        if (!pCam) {
+            pthread_mutex_unlock(&mLock);
             return false;
+        }
         CamProperty cp;
         cp.width = IMAGE_WIDTH/2;
         cp.height = IMAGE_HEIGHT/2;
@@ -223,26 +241,34 @@ bool CameraSource::init()
                 mCam[i].pBuffer = mpOutBuffer;
                 break;
         }
-        //if(!pCam->Start(FrameCallback, (mCam + i))){
+ALOGV("Start cam %d", i);
         if(!pCam->Start(FramePostProcess, (mCam + i))){
             mCam[i].pCam = NULL;
 
         }
 
     }
+    mState = CS_OPENED;
+    pthread_mutex_unlock(&mLock);
     return true;
 }
-
-CameraSource::~CameraSource()
+//close all cameras
+void CameraSource::close()
 {
+    pthread_mutex_lock(&mLock);
     for (int i=0; i<MAX_CAM; i++) {
-
-        if (mCam[i].pCam ) {
-            mCam[i].pCam ->Stop();
-            mCam[i].pCam ->Close();
-            mCam[i].pCam = NULL; //no need to delete it, CameraManager do it.
+        if (mCam[i].pCam) {
+            mCam[i].pCam->Stop();
+            mCam[i].pCam->Close();
+            mCam[i].pCam = NULL;
         }
     }
+    mState = CS_INITED;
+    pthread_mutex_unlock(&mLock);
+}
+CameraSource::~CameraSource()
+{
+    close();
     SAFE_FREE(mpOutBuffer);
         //if use sim file
     if(mFp) {
@@ -253,41 +279,15 @@ CameraSource::~CameraSource()
 
     pthread_mutex_destroy(&mLock);
 }
-int xioctl(int fd, int request, void* arg);
-#define STREAM_OFF(i) if (-1 ==  xioctl( mCam[i].pCam->m_fd, VIDIOC_STREAMOFF, &type)) {ALOGE("STREAMOFF %d error.", i);}
-#define STREAM_ON(i) if (-1 ==  xioctl( mCam[i].pCam->m_fd, VIDIOC_STREAMON, &type)) {ALOGE("STREAMON %d error.", i);}
+
 unsigned char * CameraSource::GetFrameData()
 {
-//if not use Frame callback
-#if 0
-static int nnn = 0;
-ALOGV("Get frame %d", nnn++);
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    //turn off 1,3; turn on 0,2
-    STREAM_OFF(1);
-    STREAM_OFF(3);
-    STREAM_ON(0);
-    STREAM_ON(2)
-    mCam[0].pCam->GetFrame( mCam[0].pBuffer, mWidth*mHeight);
-    mCam[2].pCam->GetFrame( mCam[2].pBuffer, mWidth*mHeight);
-
-    //turn off 0,2; turn on 1,3
-    STREAM_OFF(0);
-    STREAM_OFF(2);
-    STREAM_ON(1);
-    STREAM_ON(3)
-    mCam[1].pCam->GetFrame( mCam[1].pBuffer, mWidth*mHeight);
-    mCam[3].pCam->GetFrame( mCam[3].pBuffer, mWidth*mHeight);
-#endif
-
-#if 1
+    pthread_mutex_lock(&mLock);
     for(int i=0; i< MAX_CAM; i++) {
         if (mCam[i].pCam) {
             mCam[i].pCam->GetFrame( mCam[i].pBuffer, mWidth*mHeight);
         }
     }
-    pthread_mutex_lock(&mLock);
-#endif
 
     return mpOutBuffer;
 }

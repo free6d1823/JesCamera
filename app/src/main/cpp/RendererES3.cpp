@@ -57,6 +57,8 @@ public:
     RendererES3();
     virtual ~RendererES3();
     bool init();
+    virtual void setOption(int nOption);
+
 private:
     void updateTextureData();
     enum {VB_INSTANCE, VB_TEXT, VB_SCALEROT, VB_OFFSET, VB_COUNT};
@@ -141,6 +143,8 @@ bool RendererES3::init() {
     ///
     if(!gCameraSource.init())
         return false;
+
+    gCameraSource.open(0x05); //open cam 1/3 as default
     mTexWidth = gCameraSource.Width();
     mTexHeight = gCameraSource.Height();
     mpTexImg = NULL; //buffer is provided by CameraSource
@@ -211,3 +215,20 @@ void RendererES3::draw(unsigned int numInstances) {
     glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, 1);
 }
 
+void RendererES3::setOption(int nOption)
+{
+    switch(nOption) {
+        case 0: //open all cam
+            gCameraSource.open(0x0f);
+            break;
+        case 1: //open cam 1/3
+            gCameraSource.open(0x0a);
+            break;
+        case 2: //open cam 0/2
+            gCameraSource.open(0x05);
+            break;
+        default:
+            break;
+    }
+
+}

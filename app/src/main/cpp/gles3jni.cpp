@@ -221,7 +221,8 @@ void Renderer::render() {
     draw(mNumInstances);
     checkGlError("Renderer::render");
 }
-
+void Renderer::setOption(int nOption)
+{}
 // ----------------------------------------------------------------------------
 
 static Renderer* g_renderer = NULL;
@@ -230,6 +231,7 @@ extern "C" {
     JNIEXPORT void JNICALL Java_com_android_gles3jni_GLES3JNILib_init(JNIEnv* env, jobject obj);
     JNIEXPORT void JNICALL Java_com_android_gles3jni_GLES3JNILib_resize(JNIEnv* env, jobject obj, jint width, jint height);
     JNIEXPORT void JNICALL Java_com_android_gles3jni_GLES3JNILib_step(JNIEnv* env, jobject obj);
+    JNIEXPORT void JNICALL Java_com_android_gles3jni_GLES3JNILib_setOption(JNIEnv* env, jobject obj, jint option);
 };
 
 #if !defined(DYNAMIC_ES3)
@@ -271,5 +273,11 @@ JNIEXPORT void JNICALL
 Java_com_android_gles3jni_GLES3JNILib_step(JNIEnv* env, jobject obj) {
     if (g_renderer) {
         g_renderer->render();
+    }
+}
+JNIEXPORT void JNICALL Java_com_android_gles3jni_GLES3JNILib_setOption(JNIEnv* env, jobject obj, jint option)
+{
+    if(g_renderer) {
+        g_renderer->setOption( option);
     }
 }

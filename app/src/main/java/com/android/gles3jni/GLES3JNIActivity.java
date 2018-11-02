@@ -21,6 +21,9 @@ import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
 import android.support.v4.app.ActivityCompat;
@@ -28,6 +31,7 @@ import android.support.v4.app.ActivityCompat;
 import java.io.File;
 
 public class GLES3JNIActivity extends Activity {
+    private GestureDetector mDetector;
 
     GLES3JNIView mView;
     /**
@@ -47,8 +51,20 @@ public class GLES3JNIActivity extends Activity {
         super.onCreate(icicle);
         mView = new GLES3JNIView(getApplication());
         setContentView(mView);
+        mDetector = new GestureDetector(this, new MyGestureListener());
+        mView.setOnTouchListener(touchListener);
     }
+    View.OnTouchListener touchListener = new View.OnTouchListener() {
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            // pass the events to the gesture detector
+            // a return value of true means the detector is handling it
+            // a return value of false means the detector didn't
+            // recognize the event
+            return mDetector.onTouchEvent(event);
 
+        }
+    };
     @Override protected void onPause() {
         super.onPause();
         mView.onPause();
@@ -106,5 +122,51 @@ public class GLES3JNIActivity extends Activity {
             finish();
 
     }
+    class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
 
+        @Override
+        public boolean onDown(MotionEvent event) {
+            Log.d("TAG","onDown: ");
+
+            // don't return false here or else none of the other
+            // gestures will work
+            return true;
+        }
+
+        @Override
+        public boolean onSingleTapConfirmed(MotionEvent e) {
+            Log.i("TAG", "onSingleTapConfirmed: ");
+            return true;
+        }
+
+        @Override
+        public void onLongPress(MotionEvent e) {
+//            Log.i("TAG", "onLongPress: ");
+        }
+
+        int mOption = 0;
+        @Override
+        public boolean onDoubleTap(MotionEvent e) {
+            Log.i("TAG", "onDoubleTap: ");
+            //open camera testing
+            mOption ++;
+            if (mOption > 2) mOption = 0;
+            GLES3JNILib.setOption(mOption);
+            return false;
+        }
+
+        @Override
+        public boolean onScroll(MotionEvent e1, MotionEvent e2,
+                                float distanceX, float distanceY) {
+            //  Log.i("TAG", "onScroll: x=" + distanceX + " y= "+ distanceY+ " e2= "+e2.getY() );
+            return true;
+        }
+
+        @Override
+        public boolean onFling(MotionEvent event1, MotionEvent event2,
+                               float velocityX, float velocityY) {
+            //Log.i("TAG", "onFling: velocityX="+velocityX + " velocityY= "+ velocityY);
+            return true;
+        }
+    }
 }
